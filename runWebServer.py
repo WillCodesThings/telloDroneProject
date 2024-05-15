@@ -55,10 +55,10 @@ def throwTakeoff():
 
     if throwTakeoff:
         tello.throw_and_go()
-        return jsonify({'message': 'Tello throw and go.'})
+        return jsonify({'message': True})
     else:
         tello.land()
-        return jsonify({'message': 'Tello landing.'})
+        return jsonify({'message': False})
 
 @app.route('/takeoff', methods=['GET'])
 def takeoff():
