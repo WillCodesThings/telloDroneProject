@@ -9,14 +9,14 @@
 
         droneImage = ""
 
-        // setInterval(() => {
-        //     droneImage = fetch("http://localhost:5000/droneImage")
-        //         .then((response) => response.json())
-        //         .then((data) => {
-        //             console.log(data);
-        //             droneImage = data;
-        //         });
-        // }, 5);
+        setInterval(() => {
+            droneImage = fetch("http://localhost:5000/droneImage")
+                .then((response) => response.json())
+                .then((data) => {
+                    console.log(data);
+                    droneImage = data;
+                });
+        }, 5);
 
     });
 </script>

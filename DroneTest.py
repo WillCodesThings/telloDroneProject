@@ -3,12 +3,14 @@ import cv2
 import pygame
 import numpy as np
 import time
-import face_recognition
+from dependencies.faceRecognition import FacialRecognition as fr
 
 # Speed of the drone
 S = 60
 # Frames per second of the pygame window display
 FPS = 120
+
+FaceRecognition = fr("faces")
 
 class FrontEnd(object):
      
@@ -33,10 +35,7 @@ class FrontEnd(object):
         self.speed = 10
         self.send_rc_control = False
         pygame.time.set_timer(pygame.USEREVENT + 1, 1000 // FPS)
-
-        # Load a reference image and create a face encoding
-        self.reference_image = face_recognition.load_image_file("C:\\Users\\linda.bergfeld\\Desktop\\finalProjectAPCSA\\faces\\Will.jpg")
-        self.reference_face_encoding = face_recognition.face_encodings(self.reference_image)[0]
+        self.PERFRAMERECOGNITION = 10
 
     def run(self):
         self.tello.connect()
@@ -65,27 +64,15 @@ class FrontEnd(object):
 
             frame = frame_read.frame
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            face_locations = face_recognition.face_locations(frame_rgb)
-            face_encodings = face_recognition.face_encodings(frame_rgb, face_locations)
+            
+            # Find all the faces and face encodings in the current frame of video
 
-            for face_encoding, (top, right, bottom, left) in zip(face_encodings, face_locations):
-                matches = face_recognition.compare_faces([self.reference_face_encoding], face_encoding)
-                if matches[0]:  # If a match was found
-                    face_center_x = (left + right) // 2
-                    face_center_y = (top + bottom) // 2
-                    screen_center_x, screen_center_y = 480, 360
-                    self.yaw_velocity = int((face_center_x - screen_center_x) * 0.1)
-                    self.up_down_velocity = int((face_center_y - screen_center_y) * 0.1)
-
-                    # Calculate the size of the face bounding box
-                    face_size = bottom - top
-                    ideal_size = 100  # Adjust this value based on testing
-                    if face_size > ideal_size:
-                        self.for_back_velocity = -S  # Move drone backward
-                    elif face_size < ideal_size:
-                        self.for_back_velocity = S   # Move drone forward
-                    else:
-                        self.for_back_velocity = 0  # Maintain the distance
+            if self.PERFRAMERECOGNITION % 10 == 0:
+                face_locations, face_names = FaceRecognition.detect_face(frame_rgb)
+                for face_loc, name in zip(face_locations, face_names):
+                    y1, x2, y2, x1 = face_loc[0], face_loc[1], face_loc[2], face_loc[3]
+                    cv2.putText(frame, name,(x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 200), 2)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 200), 4)
 
             self.screen.fill([0, 0, 0])
             text = "Battery: {}%".format(self.tello.get_battery())
@@ -98,6 +85,7 @@ class FrontEnd(object):
             pygame.display.update()
 
             time.sleep(1 / FPS)
+            self.PERFRAMERECOGNITION += 1
 
         self.tello.end()
 
