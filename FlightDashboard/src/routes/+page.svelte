@@ -1,7 +1,7 @@
 <script>
     import { onMount } from "svelte";
     import Bg from "../assets/images/mapBG-removebg.png"
-    import { ArrowUpIcon, ArrowDownIcon, CornerUpLeftIcon, CornerUpRightIcon, RepeatIcon, AlertTriangleIcon, ChevronsDownIcon, ChevronsUpIcon, ChevronsLeftIcon, ChevronsRightIcon, AnchorIcon, CloudIcon, FeatherIcon, EyeIcon, CrosshairIcon } from "svelte-feather-icons";
+    import { ArrowUpIcon, ArrowDownIcon, CornerUpLeftIcon, CornerUpRightIcon, RepeatIcon, AlertTriangleIcon, ChevronsDownIcon, ChevronsUpIcon, ChevronsLeftIcon, ChevronsRightIcon, AnchorIcon, CloudIcon, RadioIcon, FeatherIcon, EyeIcon, CrosshairIcon } from "svelte-feather-icons";
 
     import { writable } from "svelte/store";
 
@@ -14,12 +14,19 @@
     let moveSpeed = 10; // speed in cm/s
     let PersonToDetect = ""; // person to detect
     let throwableLaunch = false; // throwable launch status
+    let curTemp = 0; // current temperature
+    let launched = false; // launched status
     let directions = writable({
         forward: false,
         backward: false,
         left: false,
         right: false
     });
+
+    function toggleLaunch() {
+        launched = !launched;
+        console.log(launched);
+    }
 
     // Function to toggle direction
     function toggleDirection(key) {
@@ -166,9 +173,17 @@
             Flight Time: 
             <div class="text-5xl font-semibold text-lime-500"> {flightTime} </div>
         </div>
-        <div class="bg-[#171219] col-span-1 row-span-1 rounded-xl p-3 flex flex-col justify-center items-center ease-in-out text-center text-xl">
-            Battery: 
-            <div class="{battery > 80 ? "text-green-500" : battery > 40 ? "text-orange-500" : "text-red-500"} text-5xl font-semibold"> {battery} %</div>
+        <div class="bg-[#171219] col-span-1 row-span-1 rounded-xl p-3 flex flex-row gap-10 justify-center items-center ease-in-out text-center text-xl">
+            <div class="flex flex-col justify-center items-center">
+                Battery: 
+                <div class="{battery > 80 ? "text-green-500" : battery > 40 ? "text-orange-500" : "text-red-500"} text-5xl font-semibold"> {battery} %</div>
+            </div>
+            <div class="flex flex-col justify-center items-center">
+                Temp:
+                <div class="{curTemp > 80 ? "text-red-500" : curTemp > 40 ? "text-orange-500" : "text-blue-500"} text-5xl font-semibold"> {curTemp}°</div>
+            </div>
+            
+
         </div>
 
         <div class="bg-[#171219] col-span-1 row-span-1 rounded-xl p-3 flex flex-col justify-center items-center ease-in-out text-center text-xl">
@@ -187,7 +202,7 @@
             </div>
             <div class="flex flex-col">
                 Yaw:
-                <div class="text-5xl font-semibold text-amber-500"> 0°</div>
+                <div class="text-5xl font-semibold text-yellow-500"> 0°</div>
             </div>
         </div>
 
@@ -230,19 +245,19 @@
                         </button>
                         <button 
                             class:active={$directions.backward}
-                            class="control-btn {$directions.backward ? 'bg-green-500' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
+                            class="control-btn {$directions.backward ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
                             on:click={() => toggleDirection('backward')}>
                             <ChevronsDownIcon/>
                         </button>
                         <button
                             class:active={$directions.left}
-                            class="control-btn {$directions.left ? 'bg-green-500' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
+                            class="control-btn {$directions.left ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
                             on:click={() => toggleDirection('left')}>
                             <ChevronsLeftIcon/>
                         </button>
                         <button 
                         class:active={$directions.right}
-                            class="control-btn {$directions.right ? 'bg-green-500' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
+                            class="control-btn {$directions.right ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
                             on:click={() => toggleDirection('right')}>
                             <ChevronsRightIcon/>
                         </button>
@@ -283,9 +298,17 @@
                     <option value="car">Objects</option>
                 </select>
             </div>
-            <div class="flex flex-col">
-                <div class="font-medium py-2">Throwable Launch</div>
-                <button class="control-btn {throwableLaunch ? 'bg-green-500' : 'bg-[#29202c]'} flex flex-col justify-center items-center" on:click={() => {toggleThrowableLaunch()}}><FeatherIcon/></button>
+            <div class="flex flex-row items-center">
+                <div class="flex-col flex justify-center items-center">
+                    <div class="font-medium py-2">Throwable Launch</div>
+                    <div class="flex flex-row gap-2">
+                        <button class="control-btn {throwableLaunch ? 'bg-green-500' : 'bg-[#29202c]'} flex flex-col justify-center items-center" on:click={() => {toggleThrowableLaunch()}}><FeatherIcon/></button>
+                    <button class="control-btn {launched ? 'bg-green-500' : 'bg-[#29202c]'} flex flex-col justify-center items-center" on:click={() => {toggleLaunch()}}><RadioIcon/></button>
+                    </div>
+                    
+                </div>
+                
+                <!-- add toggle switch here -->                
             </div>
             
         </div>
