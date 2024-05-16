@@ -6,88 +6,115 @@ tello = Tello()
 
 throwTakeoff = False
 
-@app.route('/', methods=['GET'])
-def index():
-    return render_template('index.html')
 
-@app.route('/connect', methods=['GET'])
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
+
+
+@app.route("/connect", methods=["GET"])
 def connect():
     tello.connect()
-    return jsonify({'message': 'Connected to Tello.'})
+    return jsonify({"message": "Connected to Tello."})
 
-@app.route('/battery', methods=['GET'])
+
+@app.route("/battery", methods=["GET"])
 def battery():
     battery = tello.get_battery()
-    return jsonify({'battery': battery})
+    return jsonify({"battery": battery})
 
-@app.route('/streamon', methods=['GET'])
+
+@app.route("/streamon", methods=["GET"])
 def streamon():
     tello.streamon()
-    return jsonify({'message': 'Video stream on.'})
+    return jsonify({"message": "Video stream on."})
 
-@app.route('/streamoff', methods=['GET'])
+
+@app.route("/streamoff", methods=["GET"])
 def streamoff():
     tello.streamoff()
-    return jsonify({'message': 'Video stream off.'})
+    return jsonify({"message": "Video stream off."})
+
 
 @app.route("/video_feed", methods=["GET"])
 def video_feed():
-    return Response(tello.get_frame_read(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return Response(
+        tello.get_frame_read(), mimetype="multipart/x-mixed-replace; boundary=frame"
+    )
 
-@app.route('/flightTime', methods=['GET'])
+
+@app.route("/video", methods=["GET"])
+def video():
+    return tello.get_udp_video_address()
+
+
+@app.route("/speed", methods=["GET"])
+def speed():
+    speed = tello.get_speed()
+    return jsonify({"speed": speed})
+
+
+@app.route("/flightTime", methods=["GET"])
 def flightTime():
     flightTime = tello.get_flight_time()
-    return jsonify({'flightTime': flightTime})
+    return jsonify({"flightTime": flightTime})
 
-@app.route('/curHeight', methods=['GET'])
+
+@app.route("/curHeight", methods=["GET"])
 def curHeight():
     curHeight = tello.get_height()
-    return jsonify({'curHeight': curHeight})
+    return jsonify({"curHeight": curHeight})
 
-@app.route('/curTemp', methods=['GET'])
+
+@app.route("/curTemp", methods=["GET"])
 def curTemp():
     curTemp = tello.get_temperature()
-    return jsonify({'curTemp': curTemp})
+    return jsonify({"curTemp": curTemp})
 
-@app.route('/throwTakeoff', methods=['GET'])
+
+@app.route("/throwTakeoff", methods=["GET"])
 def throwTakeoff():
     throwTakeoff = not throwTakeoff
 
     if throwTakeoff:
         tello.throw_and_go()
-        return jsonify({'message': True})
+        return jsonify({"message": True})
     else:
         tello.land()
-        return jsonify({'message': False})
+        return jsonify({"message": False})
 
-@app.route('/takeoff', methods=['GET'])
+
+@app.route("/takeoff", methods=["GET"])
 def takeoff():
     tello.takeoff()
-    return jsonify({'message': 'Tello taking off.'})
+    return jsonify({"message": "Tello taking off."})
 
-@app.route('/land', methods=['GET'])
+
+@app.route("/land", methods=["GET"])
 def land():
     tello.land()
-    return jsonify({'message': 'Tello landing.'})
+    return jsonify({"message": "Tello landing."})
 
-@app.route('/move', methods=['POST'])
+
+@app.route("/move", methods=["POST"])
 def move():
     data = request.get_json()
-    direction = data.get('direction')
-    distance = data.get('distance')
-    if direction == 'up':
+    direction = data.get("direction")
+    distance = data.get("distance")
+    if direction == "up":
         tello.move_up(distance)
-    elif direction == 'down':
+    elif direction == "down":
         tello.move_down(distance)
-    elif direction == 'left':
+    elif direction == "left":
         tello.move_left(distance)
-    elif direction == 'right':
+    elif direction == "right":
         tello.move_right(distance)
-    elif direction == 'forward':
+    elif direction == "forward":
         tello.move_forward(distance)
-    elif direction == 'back':
+    elif direction == "back":
         tello.move_back(distance)
-    return jsonify({'message': f'Moved {direction} by {distance} cm.'})
+    return jsonify({"message": f"Moved {direction} by {distance} cm."})
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5000)
