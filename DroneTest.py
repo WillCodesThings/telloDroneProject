@@ -35,7 +35,7 @@ class FrontEnd(object):
         self.speed = 10
         self.send_rc_control = False
         pygame.time.set_timer(pygame.USEREVENT + 1, 1000 // FPS)
-        self.PERFRAMERECOGNITION = 10
+        self.PERFRAMERECOGNITION = 1
 
     def run(self):
         self.tello.connect()

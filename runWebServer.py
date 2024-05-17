@@ -1,40 +1,49 @@
-from flask import Flask, jsonify, request, render_template, Response
+from flask import Flask, jsonify, request, Response, send_from_directory
 from djitellopy import Tello
+import threading
 
-app = Flask(__name__)
-tello = Tello()
+app = Flask(__name__, static_folder='build/_app', static_url_path='/_app')
 
+tello = None
 throwTakeoff = False
 
+def run_in_thread(target, *args, **kwargs):
+    thread = threading.Thread(target=target, args=args, kwargs=kwargs)
+    thread.start()
+    return thread
+
+def initialize_tello():
+    global tello
+    tello = Tello()
+    try:
+        tello.connect()
+        print("Connected to Tello.")
+    except Exception as e:
+        print(f"Error initializing Tello: {e}")
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html")
-
+    return send_from_directory('build/_app', 'index.html')
 
 @app.route("/connect", methods=["GET"])
 def connect():
-    tello.connect()
-    return jsonify({"message": "Connected to Tello."})
-
+    run_in_thread(tello.connect)
+    return jsonify({"message": "Connecting to Tello..."})
 
 @app.route("/battery", methods=["GET"])
 def battery():
     battery = tello.get_battery()
     return jsonify({"battery": battery})
 
-
 @app.route("/streamon", methods=["GET"])
 def streamon():
-    tello.streamon()
-    return jsonify({"message": "Video stream on."})
-
+    run_in_thread(tello.streamon)
+    return jsonify({"message": "Turning video stream on..."})
 
 @app.route("/streamoff", methods=["GET"])
 def streamoff():
-    tello.streamoff()
-    return jsonify({"message": "Video stream off."})
-
+    run_in_thread(tello.streamoff)
+    return jsonify({"message": "Turning video stream off..."})
 
 @app.route("/video_feed", methods=["GET"])
 def video_feed():
@@ -42,59 +51,51 @@ def video_feed():
         tello.get_frame_read(), mimetype="multipart/x-mixed-replace; boundary=frame"
     )
 
-
 @app.route("/video", methods=["GET"])
 def video():
     return tello.get_udp_video_address()
-
 
 @app.route("/speed", methods=["GET"])
 def speed():
     speed = tello.get_speed()
     return jsonify({"speed": speed})
 
-
 @app.route("/flightTime", methods=["GET"])
 def flightTime():
     flightTime = tello.get_flight_time()
     return jsonify({"flightTime": flightTime})
-
 
 @app.route("/curHeight", methods=["GET"])
 def curHeight():
     curHeight = tello.get_height()
     return jsonify({"curHeight": curHeight})
 
-
 @app.route("/curTemp", methods=["GET"])
 def curTemp():
     curTemp = tello.get_temperature()
     return jsonify({"curTemp": curTemp})
 
-
 @app.route("/throwTakeoff", methods=["GET"])
-def throwTakeoff():
+def throw_takeoff():
+    global throwTakeoff
     throwTakeoff = not throwTakeoff
 
     if throwTakeoff:
-        tello.throw_and_go()
+        run_in_thread(tello.throw_and_go)
         return jsonify({"message": True})
     else:
-        tello.land()
+        run_in_thread(tello.land)
         return jsonify({"message": False})
-
 
 @app.route("/takeoff", methods=["GET"])
 def takeoff():
-    tello.takeoff()
-    return jsonify({"message": "Tello taking off."})
-
+    run_in_thread(tello.takeoff)
+    return jsonify({"message": "Tello taking off..."})
 
 @app.route("/land", methods=["GET"])
 def land():
-    tello.land()
-    return jsonify({"message": "Tello landing."})
-
+    run_in_thread(tello.land)
+    return jsonify({"message": "Tello landing..."})
 
 @app.route("/move", methods=["POST"])
 def move():
@@ -102,19 +103,24 @@ def move():
     direction = data.get("direction")
     distance = data.get("distance")
     if direction == "up":
-        tello.move_up(distance)
+        run_in_thread(tello.move_up, distance)
     elif direction == "down":
-        tello.move_down(distance)
+        run_in_thread(tello.move_down, distance)
     elif direction == "left":
-        tello.move_left(distance)
+        run_in_thread(tello.move_left, distance)
     elif direction == "right":
-        tello.move_right(distance)
+        run_in_thread(tello.move_right, distance)
     elif direction == "forward":
-        tello.move_forward(distance)
+        run_in_thread(tello.move_forward, distance)
     elif direction == "back":
-        tello.move_back(distance)
+        run_in_thread(tello.move_back, distance)
     return jsonify({"message": f"Moved {direction} by {distance} cm."})
 
+# Serve static files from the 'build/_app' directory
+@app.route('/_app/<path:filename>')
+def custom_static(filename):
+    return send_from_directory(app.static_folder, filename)
 
 if __name__ == "__main__":
+    run_in_thread(initialize_tello)
     app.run(debug=True, host="0.0.0.0", port=5000)
