@@ -64,7 +64,12 @@
     onMount(() => {
         console.log("Page mounted");
 
-        droneImage = ""
+        droneImage = fetch("http://localhost:5000/video")
+            .then((response) => response.json())
+            .then((data) => {
+                console.log(data);
+                droneImage = data;
+            });
 
         // setInterval(() => {
         //     droneImage = fetch("http://localhost:5000/video_feed")
@@ -141,9 +146,9 @@
     <!-- Drone Dashboard -->
     <div class="grid grid-cols-5 grid-rows-5 w-full h-full absolute z-front gap-4 p-2 z-10">
         <div class="bg-[#171219] col-span-3 row-span-3 rounded-2xl p-2 flex flex-row">
-            <div class="w-[75%] h-full bg-[#171219] shadow-[#29202c] shadow-sm rounded-md" id="Camera">
+            <div class="w-[75%] h-full bg-[#171219] shadow-[#29202c] shadow-sm rounded-md overflow-hidden" id="Camera">
                 <!-- Placeholder for drone image -->
-                <img src="{droneImage}" alt="Drone Live Feed">
+                <img src="http://localhost:8000/video_feed" alt="Drone Live Feed" class="rounded-md">
             </div>
             
             <select class="mx-auto mt-20 w-48 h-16 bg-[#29202c] rounded-md text-[#E6E1D3] font-medium text-xl p-2" name="cameras" id="Cameras">
