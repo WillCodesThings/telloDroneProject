@@ -147,8 +147,6 @@ def land():
 def move(data: dict):
     if not tello_ready_event.is_set():
         raise HTTPException(status_code=500, detail="Tello not initialized")
-
-    direction = data.get("direction")
     speed = data.get(
         "speed", 60
     )  # Use speed instead of distance to match send_rc_control
@@ -157,22 +155,44 @@ def move(data: dict):
     global velocity_state
 
     # Map directions to velocities
-    if direction == "up":
+    if data.get("up_down_velocity") >= 1:
         velocity_state["up_down_velocity"] += speed
-    elif direction == "down":
+    elif data.get("up_down_velocity") <= -1:
         velocity_state["up_down_velocity"] -= speed
-    elif direction == "left":
+    elif data.get("left_right_velocity") <= 1:
         velocity_state["left_right_velocity"] -= speed
-    elif direction == "right":
+    elif data.get("left_right_velocity") >= 1:
         velocity_state["left_right_velocity"] += speed
-    elif direction == "forward":
+    elif data.get("forward_backward_velocity") >= 1:
         velocity_state["forward_backward_velocity"] += speed
-    elif direction == "backward":
+    elif data.get("forward_backward_velocity") <= 1:
         velocity_state["forward_backward_velocity"] -= speed
-    elif direction == "yaw_left":
+    elif data.get("yaw_velocity") <= -1:
         velocity_state["yaw_velocity"] -= speed
-    elif direction == "yaw_right":
+    elif data.get("yaw_velocity") >= 1:
         velocity_state["yaw_velocity"] += speed
+
+    # Determine the direction based on the velocity state
+    direction = []
+    if velocity_state["up_down_velocity"] > 0:
+        direction.append("up")
+    elif velocity_state["up_down_velocity"] < 0:
+        direction.append("down")
+
+    if velocity_state["left_right_velocity"] > 0:
+        direction.append("right")
+    elif velocity_state["left_right_velocity"] < 0:
+        direction.append("left")
+
+    if velocity_state["forward_backward_velocity"] > 0:
+        direction.append("forward")
+    elif velocity_state["forward_backward_velocity"] < 0:
+        direction.append("backward")
+
+    if velocity_state["yaw_velocity"] > 0:
+        direction.append("yaw_right")
+    elif velocity_state["yaw_velocity"] < 0:
+        direction.append("yaw_left")
 
     # Send the rc control command with the updated velocities
     run_in_thread(
