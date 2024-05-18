@@ -12,10 +12,11 @@ FPS = 120
 
 FaceRecognition = fr("faces")
 
+
 class FrontEnd(object):
-     
+
     def __init__(self):
-        """ Maintains the Tello display and moves it through the keyboard keys.
+        """Maintains the Tello display and moves it through the keyboard keys.
         Press escape key to quit.
         The controls are:
             - T: Takeoff
@@ -64,19 +65,29 @@ class FrontEnd(object):
 
             frame = frame_read.frame
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
+
             # Find all the faces and face encodings in the current frame of video
 
             if self.PERFRAMERECOGNITION % 10 == 0:
                 face_locations, face_names = FaceRecognition.detect_face(frame_rgb)
                 for face_loc, name in zip(face_locations, face_names):
                     y1, x2, y2, x1 = face_loc[0], face_loc[1], face_loc[2], face_loc[3]
-                    cv2.putText(frame, name,(x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 200), 2)
+                    cv2.putText(
+                        frame,
+                        name,
+                        (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_DUPLEX,
+                        1,
+                        (0, 0, 200),
+                        2,
+                    )
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 200), 4)
 
             self.screen.fill([0, 0, 0])
             text = "Battery: {}%".format(self.tello.get_battery())
-            cv2.putText(frame, text, (5, 720 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(
+                frame, text, (5, 720 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2
+            )
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame = np.rot90(frame)
             frame = np.flipud(frame)
@@ -90,7 +101,7 @@ class FrontEnd(object):
         self.tello.end()
 
     def keydown(self, key):
-        """ Update velocities based on key pressed
+        """Update velocities based on key pressed
         Arguments:
             key: pygame key
         """
@@ -112,13 +123,17 @@ class FrontEnd(object):
             self.yaw_velocity = S
 
     def keyup(self, key):
-        """ Update velocities based on key released
+        """Update velocities based on key released
         Arguments:
             key: pygame key
         """
-        if key == pygame.K_UP or key == pygame.K_DOWN:  # set zero forward/backward velocity
+        if (
+            key == pygame.K_UP or key == pygame.K_DOWN
+        ):  # set zero forward/backward velocity
             self.for_back_velocity = 0
-        elif key == pygame.K_LEFT or key == pygame.K_RIGHT:  # set zero left/right velocity
+        elif (
+            key == pygame.K_LEFT or key == pygame.K_RIGHT
+        ):  # set zero left/right velocity
             self.left_right_velocity = 0
         elif key == pygame.K_w or key == pygame.K_s:  # set zero up/down velocity
             self.up_down_velocity = 0
@@ -133,12 +148,18 @@ class FrontEnd(object):
 
     def update(self):
         if self.send_rc_control:
-            self.tello.send_rc_control(self.left_right_velocity, self.for_back_velocity,
-                                       self.up_down_velocity, self.yaw_velocity)
+            self.tello.send_rc_control(
+                self.left_right_velocity,
+                self.for_back_velocity,
+                self.up_down_velocity,
+                self.yaw_velocity,
+            )
+
 
 def main():
     frontend = FrontEnd()
     frontend.run()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
