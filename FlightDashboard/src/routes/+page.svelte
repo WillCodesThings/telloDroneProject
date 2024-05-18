@@ -1,12 +1,10 @@
 <script>
     import { onMount } from "svelte";
-    import Bg from "../assets/images/mapBG-removebg.png"
-    import { ArrowUpIcon, ArrowDownIcon, CornerUpLeftIcon, CornerUpRightIcon, RepeatIcon, AlertTriangleIcon, ChevronsDownIcon, ChevronsUpIcon, ChevronsLeftIcon, ChevronsRightIcon, AnchorIcon, CloudIcon, RadioIcon, FeatherIcon, EyeIcon, CrosshairIcon } from "svelte-feather-icons";
-
+    import Bg from "../assets/images/mapBG-removebg.png";
+    import { CornerUpLeftIcon, CornerUpRightIcon, RepeatIcon, AlertTriangleIcon, ChevronsDownIcon, ChevronsUpIcon, ChevronsLeftIcon, ChevronsRightIcon, AnchorIcon, CloudIcon, RadioIcon, FeatherIcon, EyeIcon, CrosshairIcon } from "svelte-feather-icons";
     import { writable } from "svelte/store";
 
     let droneImage = "";
-
     let speed = 0; // speed in percentage of max speed
     let flightTime = 0; // flight time in seconds
     let battery = 100; // battery percentage
@@ -14,8 +12,12 @@
     let moveSpeed = 10; // speed in cm/s
     let PersonToDetect = ""; // person to detect
     let throwableLaunch = false; // throwable launch status
+    let altitude = 0;
     let curTemp = 0; // current temperature
     let launched = false; // launched status
+    let roll = 0;
+    let pitch = 0;
+    let yaw = 0;
     let directions = writable({
         forward: false,
         backward: false,
@@ -23,14 +25,37 @@
         right: false
     });
 
+    // Function to send HTTP requests
+    async function sendRequest(url, method = 'GET', body = null) {
+        const options = {
+            method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: body ? JSON.stringify(body) : null
+        };
+        try {
+            const response = await fetch(url, options);
+            const data = await response.json();
+            console.log(data);
+            return data;
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    // Function to toggle launch
     function toggleLaunch() {
         launched = !launched;
-        console.log(launched);
+        if (launched) {
+            sendRequest('http://localhost:8000/takeoff');
+        } else {
+            sendRequest('http://localhost:8000/land');
+        }
     }
 
     // Function to toggle direction
     function toggleDirection(key) {
-        // set all directions to false
         directions.update(current => {
             for (const direction in current) {
                 current[direction] = false;
@@ -39,10 +64,14 @@
         });
         directions.update(current => {
             current[key] = !current[key];
+            if (current[key]) {
+                sendRequest('http://localhost:8000/move', 'POST', { direction: key, distance: moveSpeed });
+            } else {
+                sendRequest('http://localhost:8000/stop', 'POST');
+            }
             console.log(key, current[key]);
             return current;
         });
-        console.log($directions);
     }
 
     function toggleEmergency() {
@@ -52,33 +81,33 @@
 
     function toggleThrowableLaunch() {
         throwableLaunch = true;
+        sendRequest('http://localhost:8000/throwTakeoff');
         console.log(throwableLaunch);
         setInterval(() => {
             throwableLaunch = false;
         }, 5000);
     }
-    
-    // color pallete
-    // https://coolors.co/171219-225560-edf060-f0803c-310d20
+
+    async function updateStats() {
+        const specs = await sendRequest('http://localhost:8000/specs');
+        battery = specs.battery;
+        curTemp = specs.temperature;
+        flightTime = specs.flight_time;
+        roll = specs.roll;
+        pitch = specs.pitch;
+        yaw = specs.yaw;
+        altitude = specs.height;
+    }
 
     onMount(() => {
         console.log("Page mounted");
 
-        droneImage = fetch("http://localhost:5000/video")
+        droneImage = fetch("http://localhost:8000/video_feed")
             .then((response) => response.json())
             .then((data) => {
                 console.log(data);
                 droneImage = data;
             });
-
-        // setInterval(() => {
-        //     droneImage = fetch("http://localhost:5000/video_feed")
-        //         .then((response) => response.json())
-        //         .then((data) => {
-        //             console.log(data);
-        //             droneImage = data;
-        //         });
-        // }, 5);
 
         const needle = document.querySelector('.needle');
         const speedDisplay = document.getElementById('speedValue');
@@ -92,53 +121,37 @@
         document.addEventListener('keydown', (event) => {
             switch (event.key) {
                 case 'w':
-                    speed += 10;
+                    toggleDirection('forward');
                     break;
                 case 's':
-                    speed -= 10;
+                    toggleDirection('backward');
                     break;
                 case 'a':
-                    speed = 0;
+                    toggleDirection('left');
                     break;
                 case 'd':
-                    speed = 100;
+                    toggleDirection('right');
                     break;
                 case 'ArrowUp':
-                    speed += 10;
+                    sendRequest('http://localhost:8000/move', 'POST', { direction: 'up', distance: moveSpeed });
                     break;
                 case 'ArrowDown':
-                    speed -= 10;
+                    sendRequest('http://localhost:8000/move', 'POST', { direction: 'down', distance: moveSpeed });
                     break;
-                case 'q':
-                    speed += 10;
+                case 'ArrowLeft':
+                    sendRequest('http://localhost:8000/move', 'POST', { direction: 'yaw_left', distance: moveSpeed });
                     break;
-                case 'e':
-                    speed -= 10;
+                case 'ArrowRight':
+                    sendRequest('http://localhost:8000/move', 'POST', { direction: 'yaw_right', distance: moveSpeed });
                     break;
                 default:
                     break;
             }
-            updateSpeed(speed);
-            speedDisplay.textContent = `${speed} cm/s`;
-        });
-
-        const wasdControls = document.querySelector('.wasd-controls');
-        wasdControls.addEventListener('click', (event) => {
-            // Ensure we get the button element, regardless of what inside the button was clicked
-            let target = event.target;
-            while (target !== wasdControls && !target.getAttribute('data-direction')) {
-                target = target.parentNode;
-            }
-            if (target.getAttribute('data-direction')) {
-                const direction = target.getAttribute('data-direction');
-                console.log(`Moving ${direction}`);
-                // Replace console.log with your drone control command
-                // Example: drone.move(direction);
-            }
         });
 
         updateSpeed(speed); // Initial speed update
-
+        updateStats();
+        setInterval(updateStats, 10); // Update stats every 5 seconds
     });
 </script>
 
@@ -170,9 +183,8 @@
                     </g>
                 </svg>
                 <div class="needle"></div>
-                <div class="text-xl font-sans">{speed} cm/s</div>
+                <div class="text-xl font-sans" id="speedValue">{speed} cm/s</div>
             </div>
-            
         </div>
         <div class="bg-[#171219] col-span-1 row-span-1 rounded-xl p-3 flex flex-col justify-center items-center ease-in-out text-center text-xl">
             Flight Time: 
@@ -181,33 +193,31 @@
         <div class="bg-[#171219] col-span-1 row-span-1 rounded-xl p-3 flex flex-row gap-10 justify-center items-center ease-in-out text-center text-xl">
             <div class="flex flex-col justify-center items-center">
                 Battery: 
-                <div class="{battery > 80 ? "text-green-500" : battery > 40 ? "text-orange-500" : "text-red-500"} text-5xl font-semibold"> {battery} %</div>
+                <div class="{battery > 80 ? 'text-green-500' : battery > 40 ? 'text-orange-500' : 'text-red-500'} text-5xl font-semibold"> {battery} %</div>
             </div>
             <div class="flex flex-col justify-center items-center">
                 Temp:
-                <div class="{curTemp > 80 ? "text-red-500" : curTemp > 40 ? "text-orange-500" : "text-blue-500"} text-5xl font-semibold"> {curTemp}°</div>
+                <div class="{curTemp > 80 ? 'text-red-500' : curTemp > 40 ? 'text-orange-500' : 'text-blue-500'} text-5xl font-semibold"> {curTemp}°</div>
             </div>
-            
-
         </div>
 
         <div class="bg-[#171219] col-span-1 row-span-1 rounded-xl p-3 flex flex-col justify-center items-center ease-in-out text-center text-xl">
             Altitude:
-            <div class="text-5xl font-semibold text-lime-500"> 0 cm</div>
+            <div class="text-5xl font-semibold text-lime-500" id="altitude">{altitude} cm</div>
         </div>
 
         <div class="bg-[#171219] col-span-2 row-span-1 rounded-xl p-3 flex flex-row justify-evenly items-center ease-in-out text-center text-xl">
             <div class="flex flex-col">
                 Roll:
-                <div class="text-5xl font-semibold text-lime-500"> 0°</div>
+                <div class="text-5xl font-semibold text-lime-500">{roll}°</div>
             </div>
             <div class="flex flex-col">
                 Pitch:
-                <div class="text-5xl font-semibold text-amber-500"> 0°</div>
+                <div class="text-5xl font-semibold text-amber-500">{pitch}°</div>
             </div>
             <div class="flex flex-col">
                 Yaw:
-                <div class="text-5xl font-semibold text-yellow-500"> 0°</div>
+                <div class="text-5xl font-semibold text-yellow-500">{yaw}°</div>
             </div>
         </div>
 
@@ -233,39 +243,37 @@
             <div class="flex flex-col items-center justify-center space-y-2">
                 <div class="font-medium py-2">Flip/Emergency Control</div>
                 <div class="flex flex-row gap-2">
-                    <button class="control-btn flex flex-col items-center justify-center bg-[#29202c]" data-direction="flip"><RepeatIcon/></button>
-                
-                <button class="control-btn flex flex-col items-center justify-center {emergency ? "bg-red-600" : "bg-[#29202c]"}" on:click={() => toggleEmergency()} data-direction="emergency"><AlertTriangleIcon/></button>
+                    <button class="control-btn flex flex-col items-center justify-center bg-[#29202c]" on:click={() => sendRequest('http://localhost:8000/flip', 'POST', { direction: 'left' })}><RepeatIcon/></button>
+                    <button class="control-btn flex flex-col items-center justify-center {emergency ? 'bg-red-600' : 'bg-[#29202c]'}" on:click={toggleEmergency} data-direction="emergency"><AlertTriangleIcon/></button>
                 </div>
             </div>
             <div class="">
                 <div class="font-medium py-2">Flip Direction</div>
                 <div class="grid grid-cols-2 grid-rows-2 items-center justify-center gap-2">
-                    
-                        <button 
-                            class:active={$directions.forward}
-                            class="control-btn {$directions.forward ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
-                            on:click={() => toggleDirection('forward')}>
-                            <ChevronsUpIcon/>
-                        </button>
-                        <button 
-                            class:active={$directions.backward}
-                            class="control-btn {$directions.backward ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
-                            on:click={() => toggleDirection('backward')}>
-                            <ChevronsDownIcon/>
-                        </button>
-                        <button
-                            class:active={$directions.left}
-                            class="control-btn {$directions.left ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
-                            on:click={() => toggleDirection('left')}>
-                            <ChevronsLeftIcon/>
-                        </button>
-                        <button 
+                    <button 
+                        class:active={$directions.forward}
+                        class="control-btn {$directions.forward ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
+                        on:click={() => toggleDirection('forward')}>
+                        <ChevronsUpIcon/>
+                    </button>
+                    <button 
+                        class:active={$directions.backward}
+                        class="control-btn {$directions.backward ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
+                        on:click={() => toggleDirection('backward')}>
+                        <ChevronsDownIcon/>
+                    </button>
+                    <button
+                        class:active={$directions.left}
+                        class="control-btn {$directions.left ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
+                        on:click={() => toggleDirection('left')}>
+                        <ChevronsLeftIcon/>
+                    </button>
+                    <button 
                         class:active={$directions.right}
-                            class="control-btn {$directions.right ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
-                            on:click={() => toggleDirection('right')}>
-                            <ChevronsRightIcon/>
-                        </button>
+                        class="control-btn {$directions.right ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
+                        on:click={() => toggleDirection('right')}>
+                        <ChevronsRightIcon/>
+                    </button>
                 </div>
             </div>
             
@@ -282,12 +290,11 @@
             <div class="">
                 <div class="font-medium py-2">Launch Control</div>
                 <div class="flex flex-row items-center justify-center gap-2">
-                    <button class="control-btn bg-[#29202c] flex flex-col justify-center items-center"><CloudIcon/></button>
+                    <button class="{launched ? 'bg-green-500' : 'bg-[#29202c]'} control-btn bg-[#29202c] flex flex-col justify-center items-center" on:click={toggleLaunch}><CloudIcon/></button>
                     <button class="control-btn bg-[#29202c] flex flex-col justify-center items-center"><AnchorIcon/></button>
+                    <button class="control-btn {throwableLaunch ? 'bg-green-500' : 'bg-[#29202c]'} flex flex-col justify-center items-center" on:click={toggleThrowableLaunch}><FeatherIcon/></button>
                 </div>
-                
             </div>
-            
         </div>
 
         <div class="bg-[#171219] col-span-2 row-span-1 rounded-xl p-3 flex flex-row justify-evenly items-center ease-in-out text-center text-xl">
@@ -303,22 +310,9 @@
                     <option value="car">Objects</option>
                 </select>
             </div>
-            <div class="flex flex-row items-center">
-                <div class="flex-col flex justify-center items-center">
-                    <div class="font-medium py-2">Throwable Launch</div>
-                    <div class="flex flex-row gap-2">
-                        <button class="control-btn {throwableLaunch ? 'bg-green-500' : 'bg-[#29202c]'} flex flex-col justify-center items-center" on:click={() => {toggleThrowableLaunch()}}><FeatherIcon/></button>
-                    <button class="control-btn {launched ? 'bg-green-500' : 'bg-[#29202c]'} flex flex-col justify-center items-center" on:click={() => {toggleLaunch()}}><RadioIcon/></button>
-                    </div>
-                    
-                </div>
-                
-                <!-- add toggle switch here -->                
-            </div>
-            
         </div>
     </div>
-    <img class="absolute top-0 w-full h-full object-fill opacity-10 invert select-none cursor-default z-0" src="{Bg}" alt="Map Background">
+    <img class="absolute top-0 w-full h-full object-fill opacity-10 invert select-none cursor-default z-0" src={Bg} alt="Map Background">
 </section>
 
 <style>
@@ -383,5 +377,4 @@
         align-items: center;
         justify-content: center;
     }
-
 </style>
