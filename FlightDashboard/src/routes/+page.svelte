@@ -43,7 +43,9 @@
         try {
             const response = await fetch(url, options);
             const data = await response.json();
-            console.log(data);
+            
+            document.getElementById('console').innerHTML = document.getElementById('console').innerHTML + `<br/>` + JSON.stringify(data, null, 2);
+
             return data;
         } catch (error) {
             console.error('Error:', error);
@@ -385,6 +387,11 @@
                     <option value="car">Objects</option>
                 </select>
             </div>
+        </div>
+
+        <!-- console -->
+        <div class="bg-[#171219] col-span-2 row-span-1 rounded-xl p-3 flex flex-row justify-evenly items-center ease-in-out text-center text-xl">
+            <div class="w-full h-full bg-[#0e0b0f] overflow-y-scroll overflow-x-hidden" id="console"></div>
         </div>
     </div>
     <img class="absolute top-0 w-full h-full object-fill opacity-10 invert select-none cursor-default z-0" src={Bg} alt="Map Background">
