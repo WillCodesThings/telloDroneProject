@@ -60,9 +60,16 @@ def run_in_thread(target, *args, **kwargs):
     return thread
 
 
-def get_video_stream():
+def get_video_stream(direction):
     if not tello_ready_event.is_set():
         raise HTTPException(status_code=500, detail="Tello not initialized")
+
+    if direction == 1:
+        tello.set_video_direction(tello.CAMERA_FORWARD)
+    elif direction == 0:
+        tello.set_video_direction(tello.CAMERA_DOWNWARD)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid video direction")
 
     frame_read = tello.get_frame_read()
     while True:
@@ -107,7 +114,14 @@ def get_video_stream():
 @app.get("/video_feed")
 def video_feed():
     return StreamingResponse(
-        get_video_stream(), media_type="multipart/x-mixed-replace; boundary=frame"
+        get_video_stream(1), media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+
+
+@app.get("/video_feed_down")
+def video_feed():
+    return StreamingResponse(
+        get_video_stream(0), media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
 
@@ -242,10 +256,9 @@ def faceRecognition(data: dict):
 
 
 @app.get("/faceDetection")
-def faceRecognition(data: dict):
+def faceRecognition():
     if not tello_ready_event.is_set():
         raise HTTPException(status_code=500, detail="Tello not initialized")
-    person = data.get("person")
     faceProccessing = -1
     return {"face": "detecting all faces"}
 
@@ -282,13 +295,13 @@ def flip(data: dict):
         raise HTTPException(status_code=500, detail="Tello not initialized")
 
     direction = data.get("direction")
-    if direction == "left":
+    if direction == "l":
         run_in_thread(tello.flip_left)
-    elif direction == "right":
+    elif direction == "r":
         run_in_thread(tello.flip_right)
-    elif direction == "forward":
+    elif direction == "f":
         run_in_thread(tello.flip_forward)
-    elif direction == "back":
+    elif direction == "b":
         run_in_thread(tello.flip_back)
     else:
         raise HTTPException(status_code=400, detail="Invalid flip direction")
@@ -317,6 +330,14 @@ def reboot():
         raise HTTPException(status_code=500, detail="Tello not initialized")
     run_in_thread(tello.reboot)
     return {"message": "Rebooting Tello"}
+
+
+@app.get("/emergency")
+def reboot():
+    if not tello_ready_event.is_set():
+        raise HTTPException(status_code=500, detail="Tello not initialized")
+    run_in_thread(tello.emergency)
+    return {"message": "Stopped all motors"}
 
 
 @app.get("/rotate")

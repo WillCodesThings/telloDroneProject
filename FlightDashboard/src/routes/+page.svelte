@@ -18,6 +18,7 @@
     let flipDir = "f";
     let roll = 0;
     let pitch = 0;
+    let cameraDirection = "front";
     let yaw = 0;
     let directions = writable({
         forward: false,
@@ -84,6 +85,10 @@
         };
 
         sendRequest('http://localhost:8000/move', 'POST', velocities);
+    }
+
+    function updateMovement() {
+
     }
 
     function handleKeydown(event) {
@@ -154,12 +159,12 @@
 
     function toggleDirection(direction) {
         flipDir = direction;
-        console.log(flipDir);
     }
 
     function toggleEmergency() {
         emergency = !emergency;
         console.log(emergency);
+        sendRequest('http://localhost:8000/emergency');
     }
 
     function toggleThrowableLaunch() {
@@ -173,6 +178,22 @@
 
     async function updateStats() {
         const specs = await sendRequest('http://localhost:8000/specs');
+
+        try {
+            if (specs.error || specs['detail'].includes("Tello not initialized")) {
+                battery = 0;
+                curTemp = 0;
+                flightTime = 0;
+                roll = 0;
+                pitch = 0;
+                yaw = 0;
+                altitude = 0;
+            }
+            return;
+        } catch (error) {
+            console.error('Error:', error);
+        }
+
         battery = specs.battery;
         curTemp = specs.temperature;
         flightTime = specs.flight_time;
@@ -216,10 +237,10 @@
         <div class="bg-[#171219] col-span-3 row-span-3 rounded-2xl p-2 flex flex-row">
             <div class="w-[75%] h-full bg-[#171219] shadow-[#29202c] shadow-sm rounded-md overflow-hidden" id="Camera">
                 <!-- Placeholder for drone image -->
-                <img src="http://localhost:8000/video_feed" alt="Drone Live Feed" class="rounded-md">
+                <img src="{cameraDirection.includes("front") ? "http://localhost:8000/video_feed" : "http://localhost:8000/video_feed_down"}" alt="Drone Live Feed" class="rounded-md">
             </div>
             
-            <select class="mx-auto mt-20 w-48 h-16 bg-[#29202c] rounded-md text-[#E6E1D3] font-medium text-xl p-2" name="cameras" id="Cameras">
+            <select class="mx-auto mt-20 w-48 h-16 bg-[#29202c] rounded-md text-[#E6E1D3] font-medium text-xl p-2" name="cameras" id="Cameras" bind:value={cameraDirection}>
                 <option value="front">Front Camera</option>
                 <option value="bottom">Bottom Camera</option>
             </select>
@@ -306,25 +327,25 @@
                 <div class="font-medium py-2">Flip Direction</div>
                 <div class="grid grid-cols-2 grid-rows-2 items-center justify-center gap-2">
                     <button 
-                        class:active={$directions.forward}
+                        class:active={flipDir.includes("f")}
                         class="control-btn {flipDir.includes("f") ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
                         on:click={() => toggleDirection('f')}>
                         <ChevronsUpIcon/>
                     </button>
                     <button 
-                        class:active={$directions.backward}
+                        class:active={flipDir.includes("b")}
                         class="control-btn {flipDir.includes("b") ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
                         on:click={() => toggleDirection('b')}>
                         <ChevronsDownIcon/>
                     </button>
                     <button
-                        class:active={$directions.left}
+                        class:active={flipDir.includes("l")}
                         class="control-btn {flipDir.includes("l") ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
                         on:click={() => toggleDirection('l')}>
                         <ChevronsLeftIcon/>
                     </button>
                     <button 
-                        class:active={$directions.right}
+                        class:active={flipDir.includes("r")}
                         class="control-btn {flipDir.includes("r") ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col items-center justify-center"
                         on:click={() => toggleDirection('r')}>
                         <ChevronsRightIcon/>
