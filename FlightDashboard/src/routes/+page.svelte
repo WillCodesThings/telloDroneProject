@@ -1,7 +1,7 @@
 <script>
     import { onMount } from "svelte";
     import Bg from "../assets/images/mapBG-removebg.png";
-    import { CornerUpLeftIcon, CornerUpRightIcon, RepeatIcon, AlertTriangleIcon, ChevronsDownIcon, ChevronsUpIcon, ChevronsLeftIcon, ChevronsRightIcon, AnchorIcon, CloudIcon, RadioIcon, FeatherIcon, EyeIcon, CrosshairIcon } from "svelte-feather-icons";
+    import { CornerUpLeftIcon, CornerUpRightIcon, RepeatIcon, AlertTriangleIcon, ChevronsDownIcon, ChevronsUpIcon, ChevronsLeftIcon, ChevronsRightIcon, EyeOffIcon, AnchorIcon, CloudIcon, RadioIcon, FeatherIcon, EyeIcon, CrosshairIcon } from "svelte-feather-icons";
     import { writable } from "svelte/store";
 
     let droneImage = "";
@@ -14,6 +14,8 @@
     let throwableLaunch = false; // throwable launch status
     let altitude = 0;
     let curTemp = 0; // current temperature
+    let faceRecognitionActive = false;
+    let faceDetectionActive = false;
     let launched = false; // launched status
     let flipDir = "f";
     let roll = 0;
@@ -30,6 +32,51 @@
         up: false,
         down: false
     });
+
+    let moveSocket;
+    let specsSocket;
+
+    function initWebSocket() {
+        moveSocket = new WebSocket("ws://localhost:8000/ws/move");
+
+        moveSocket.onopen = function() {
+            console.log("Connected to the move WebSocket");
+        };
+
+        moveSocket.onclose = function() {
+            console.log("Disconnected from the move WebSocket");
+        };
+
+        moveSocket.onerror = function(error) {
+            console.log("WebSocket Error: " + error);
+        };
+
+        specsSocket = new WebSocket("ws://localhost:8000/ws/specs");
+
+        specsSocket.onmessage = function(event) {
+            const specs = JSON.parse(event.data);
+
+            battery = specs.battery;
+            curTemp = specs.temperature;
+            flightTime = specs.flight_time;
+            roll = specs.roll;
+            pitch = specs.pitch;
+            yaw = specs.yaw;
+            altitude = specs.height;
+        };
+
+        specsSocket.onopen = function() {
+            console.log("Connected to the specs WebSocket");
+        };
+
+        specsSocket.onclose = function() {
+            console.log("Disconnected from the specs WebSocket");
+        };
+
+        specsSocket.onerror = function(error) {
+            console.log("WebSocket Error: " + error);
+        };
+    }
 
     // Function to send HTTP requests
     async function sendRequest(url, method = 'GET', body = null) {
@@ -63,14 +110,28 @@
     }
 
     function faceRecognition() {
-        sendRequest('http://localhost:8000/faceRecognition', 'POST', { person: PersonToDetect });
+        if (faceRecognitionActive) {
+            sendRequest("http://localhost:8000/faceRecognitionStop");
+        } else if (faceDetectionActive) {
+            sendRequest("http://localhost:8000/faceDetectionStop");
+            sendRequest('http://localhost:8000/faceRecognition', 'POST', { person: PersonToDetect });
+        } else {
+            sendRequest('http://localhost:8000/faceRecognition', 'POST', { person: PersonToDetect });
+        }
     }
 
     function faceDetection() {
-        sendRequest('http://localhost:8000/faceDetection');
+        if (faceDetectionActive) {
+            sendRequest("http://localhost:8000/faceRecognitionStop");
+        } else if (faceRecognitionActive) {
+            sendRequest("http://localhost:8000/faceRecognitionStop");
+            sendRequest('http://localhost:8000/faceDetection');
+        } else {
+            sendRequest('http://localhost:8000/faceDetection');
+        }
     }
 
-    // Function to update direction and send control commands
+    // Function to update direction and send control commands via WebSocket
     function updateDirection(direction, isActive) {
         directions.update(current => {
             current[direction] = isActive;
@@ -86,11 +147,7 @@
             speed: moveSpeed
         };
 
-        sendRequest('http://localhost:8000/move', 'POST', velocities);
-    }
-
-    function updateMovement() {
-
+        moveSocket.send(JSON.stringify(velocities));
     }
 
     function handleKeydown(event) {
@@ -128,7 +185,6 @@
     }
 
     function handleKeyup(event) {
-        console.log(event.key);
         switch (event.key) {
             case 'w':
                 updateDirection('forward', false);
@@ -165,55 +221,19 @@
 
     function toggleEmergency() {
         emergency = !emergency;
-        console.log(emergency);
         sendRequest('http://localhost:8000/emergency');
     }
 
     function toggleThrowableLaunch() {
         throwableLaunch = true;
         sendRequest('http://localhost:8000/throwTakeoff');
-        console.log(throwableLaunch);
         setInterval(() => {
             throwableLaunch = false;
         }, 5000);
     }
 
-    async function updateStats() {
-        const specs = await sendRequest('http://localhost:8000/specs');
-
-        try {
-            if (specs.error || specs['detail'].includes("Tello not initialized")) {
-                battery = 0;
-                curTemp = 0;
-                flightTime = 0;
-                roll = 0;
-                pitch = 0;
-                yaw = 0;
-                altitude = 0;
-            }
-            return;
-        } catch (error) {
-            console.error('Error:', error);
-        }
-
-        battery = specs.battery;
-        curTemp = specs.temperature;
-        flightTime = specs.flight_time;
-        roll = specs.roll;
-        pitch = specs.pitch;
-        yaw = specs.yaw;
-        altitude = specs.height;
-    }
-
     onMount(() => {
         console.log("Page mounted");
-
-        droneImage = fetch("http://localhost:8000/video_feed")
-            .then((response) => response.json())
-            .then((data) => {
-                console.log(data);
-                droneImage = data;
-            });
 
         const needle = document.querySelector('.needle');
         const speedDisplay = document.getElementById('speedValue');
@@ -228,9 +248,12 @@
         document.addEventListener('keyup', handleKeyup);
 
         updateSpeed(speed); // Initial speed update
-        updateStats();
-        setInterval(updateStats, 1000); // Update stats every second
+        initWebSocket();
     });
+
+    function faceStop() {
+        sendRequest("http://localhost:8000/faceRecognitionStop");
+    }
 </script>
 
 <section class="bg-[#225560] w-full h-[100vh] relative text-[#E6E1D3]">
@@ -375,11 +398,12 @@
         </div>
 
         <div class="bg-[#171219] col-span-2 row-span-1 rounded-xl p-3 flex flex-row justify-evenly items-center ease-in-out text-center text-xl">
-            <div class="flex flex-col text-center">
+            <div class="flex flex-col text-center w-full h-full">
                 <div class="font-medium py-2">Face Detection</div>
                 <div class="flex flex-row justify-evenly">
-                    <button class="control-btn bg-[#29202c] flex flex-col justify-center items-center" on:click={faceRecognition()}><CrosshairIcon/></button>
-                    <button class="control-btn bg-[#29202c] flex flex-col justify-center items-center" on:clic={faceDetection()}><EyeIcon/></button>
+                    <button class="control-btn {faceRecognitionActive ? faceDetectionActive ? "bg-[#29202c]" : "bg-green-700" : "bg-[#29202c]"} flex flex-col justify-center items-center" on:click={faceRecognition}><CrosshairIcon/></button>
+                    <button class="control-btn {faceDetectionActive ? faceRecognitionActive ? "bg-[#29202c]" : "bg-green-700" : "bg-[#29202c]"} flex flex-col justify-center items-center" on:click={faceDetection}><EyeIcon/></button>
+                    <button class="control-btn {faceDetectionActive ? "bg-[#29202c]" : faceRecognitionActive ? "bg-green-700" : "bg-[#29202c]"} flex flex-col justify-center items-center" on:click={faceStop}><EyeOffIcon/></button>
                 </div>
                 
                 <select bind:value={PersonToDetect} class="bg-[#29202c] rounded-md text-[#E6E1D3] font-medium mt-2">
@@ -391,10 +415,10 @@
 
         <!-- console -->
         <div class="bg-[#171219] col-span-2 row-span-1 rounded-xl p-3 flex flex-row justify-evenly items-center ease-in-out text-center text-xl">
-            <div class="w-full h-full bg-[#0e0b0f] overflow-y-scroll overflow-x-hidden" id="console"></div>
+            <div class="w-full h-full bg-[#0e0b0f] overflow-y-scroll overflow-x-hidden " id="console"></div>
         </div>
     </div>
-    <img class="absolute top-0 w-full h-full object-fill opacity-10 invert select-none cursor-default z-0" src={Bg} alt="Map Background">
+    <img class="absolute top-0 w-full h-full object-fill opacity-10 invert select-none cursor-default z-0 flex flex-col items-start" src={Bg} alt="Map Background">
 </section>
 
 <style>

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +8,8 @@ import threading
 import time
 import cv2
 import os
+import json
+import asyncio
 
 app = FastAPI()
 
@@ -35,6 +37,7 @@ velocity_state = {
 tello = None
 tello_ready_event = threading.Event()
 
+clients = []
 
 def initialize_tello():
     global tello
@@ -60,16 +63,9 @@ def run_in_thread(target, *args, **kwargs):
     return thread
 
 
-def get_video_stream(direction):
+def get_video_stream():
     if not tello_ready_event.is_set():
         raise HTTPException(status_code=500, detail="Tello not initialized")
-
-    if direction == 1:
-        tello.set_video_direction(tello.CAMERA_FORWARD)
-    elif direction == 0:
-        tello.set_video_direction(tello.CAMERA_DOWNWARD)
-    else:
-        raise HTTPException(status_code=400, detail="Invalid video direction")
 
     frame_read = tello.get_frame_read()
     while True:
@@ -113,15 +109,17 @@ def get_video_stream(direction):
 
 @app.get("/video_feed")
 def video_feed():
+    run_in_thread(tello.set_video_direction, tello.CAMERA_FORWARD)
     return StreamingResponse(
-        get_video_stream(1), media_type="multipart/x-mixed-replace; boundary=frame"
+        get_video_stream(), media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
 
 @app.get("/video_feed_down")
-def video_feed():
+def video_feed_down():
+    run_in_thread(tello.set_video_direction, tello.CAMERA_DOWNWARD)
     return StreamingResponse(
-        get_video_stream(0), media_type="multipart/x-mixed-replace; boundary=frame"
+        get_video_stream(), media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
 
@@ -157,13 +155,26 @@ def land():
     return {"message": "Tello landing..."}
 
 
-@app.post("/move")
-def move(data: dict):
+@app.websocket("/ws/move")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    clients.append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            movement_data = json.loads(data)
+            await handle_movement(movement_data)
+    except WebSocketDisconnect:
+        clients.remove(websocket)
+
+
+async def handle_movement(data: dict):
     if not tello_ready_event.is_set():
-        raise HTTPException(status_code=500, detail="Tello not initialized")
-    speed = data.get(
-        "speed", 60
-    )  # Use speed instead of distance to match send_rc_control
+        for client in clients:
+            await client.send_text(json.dumps({"error": "Tello not initialized"}))
+        return
+
+    speed = data.get("speed", 60)
 
     # Access and update the global velocity state
     global velocity_state
@@ -173,51 +184,70 @@ def move(data: dict):
         velocity_state["up_down_velocity"] += speed
     elif data.get("up_down_velocity") <= -1:
         velocity_state["up_down_velocity"] -= speed
-    elif data.get("left_right_velocity") <= 1:
+    elif data.get("left_right_velocity") <= -1:
         velocity_state["left_right_velocity"] -= speed
     elif data.get("left_right_velocity") >= 1:
         velocity_state["left_right_velocity"] += speed
     elif data.get("forward_backward_velocity") >= 1:
         velocity_state["forward_backward_velocity"] += speed
-    elif data.get("forward_backward_velocity") <= 1:
+    elif data.get("forward_backward_velocity") <= -1:
         velocity_state["forward_backward_velocity"] -= speed
     elif data.get("yaw_velocity") <= -1:
         velocity_state["yaw_velocity"] -= speed
     elif data.get("yaw_velocity") >= 1:
         velocity_state["yaw_velocity"] += speed
 
-    # Determine the direction based on the velocity state
-    direction = []
-    if velocity_state["up_down_velocity"] > 0:
-        direction.append("up")
-    elif velocity_state["up_down_velocity"] < 0:
-        direction.append("down")
-
-    if velocity_state["left_right_velocity"] > 0:
-        direction.append("right")
-    elif velocity_state["left_right_velocity"] < 0:
-        direction.append("left")
-
-    if velocity_state["forward_backward_velocity"] > 0:
-        direction.append("forward")
-    elif velocity_state["forward_backward_velocity"] < 0:
-        direction.append("backward")
-
-    if velocity_state["yaw_velocity"] > 0:
-        direction.append("yaw_right")
-    elif velocity_state["yaw_velocity"] < 0:
-        direction.append("yaw_left")
-
     # Send the rc control command with the updated velocities
-    run_in_thread(
-        tello.send_rc_control,
+    tello.send_rc_control(
         velocity_state["left_right_velocity"],
         velocity_state["forward_backward_velocity"],
         velocity_state["up_down_velocity"],
         velocity_state["yaw_velocity"],
     )
 
-    return {"message": f"Moving {direction} with speed {speed}"}
+    # Broadcast updated state to all clients
+    for client in clients:
+        await client.send_text(json.dumps(velocity_state))
+
+
+@app.websocket("/ws/specs")
+async def specs_websocket(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            if tello_ready_event.is_set():
+                battery = tello.get_battery()
+                height = -1 * tello.get_height()
+                temperature = tello.get_temperature()
+                barometer = tello.get_barometer()
+                speed_x = tello.get_speed_x()
+                speed_y = tello.get_speed_y()
+                speed_z = tello.get_speed_z()
+                roll = tello.get_roll()
+                pitch = tello.get_pitch()
+                yaw = tello.get_yaw()
+                ax = tello.get_acceleration_x()
+                ay = tello.get_acceleration_y()
+                az = tello.get_acceleration_z()
+                flight_time = tello.get_flight_time()
+
+                specs = {
+                    "battery": battery,
+                    "height": height,
+                    "temperature": temperature,
+                    "barometer": barometer,
+                    "speed": {"x": speed_x, "y": speed_y, "z": speed_z},
+                    "acceleration": {"x": ax, "y": ay, "z": az},
+                    "roll": roll,
+                    "pitch": pitch,
+                    "yaw": yaw,
+                    "flight_time": flight_time,
+                }
+
+                await websocket.send_text(json.dumps(specs))
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        pass
 
 
 @app.post("/stop")
@@ -247,20 +277,29 @@ def get_barometer():
 
 
 @app.get("/faceRecognition")
-def faceRecognition(data: dict):
+def face_recognition(data: dict):
+    global faceProccessing
     if not tello_ready_event.is_set():
         raise HTTPException(status_code=500, detail="Tello not initialized")
     person = data.get("person")
     faceProccessing = 1
-    return {"face": "detecting" + person}
+    return {"face": "detecting " + person}
 
 
 @app.get("/faceDetection")
-def faceRecognition():
+def face_detection():
+    global faceProccessing
     if not tello_ready_event.is_set():
         raise HTTPException(status_code=500, detail="Tello not initialized")
     faceProccessing = -1
     return {"face": "detecting all faces"}
+
+
+@app.get("/faceRecognitionStop")
+def face_recognition_stop():
+    global faceProccessing
+    faceProccessing = 0
+    return {"face": "stop detecting"}
 
 
 @app.get("/height")
@@ -333,7 +372,7 @@ def reboot():
 
 
 @app.get("/emergency")
-def reboot():
+def emergency():
     if not tello_ready_event.is_set():
         raise HTTPException(status_code=500, detail="Tello not initialized")
     run_in_thread(tello.emergency)
@@ -362,47 +401,6 @@ def query_sdk_version():
         raise HTTPException(status_code=500, detail="Tello not initialized")
     version = tello.query_sdk_version()
     return {"sdk_version": version}
-
-
-@app.get("/specs")
-def get_specs():
-    if not tello_ready_event.is_set():
-        raise HTTPException(status_code=500, detail="Tello not initialized")
-    try:
-        battery = tello.get_battery()
-        height = tello.get_height()
-        temperature = tello.get_temperature()
-        barometer = tello.get_barometer()
-        speed_x = tello.get_speed_x()
-        speed_y = tello.get_speed_y()
-        speed_z = tello.get_speed_z()
-        roll = tello.get_roll()
-        pitch = tello.get_pitch()
-        yaw = tello.get_yaw()
-        ax = tello.get_acceleration_x()
-        ay = tello.get_acceleration_y()
-        az = tello.get_acceleration_z()
-        flight_time = tello.get_flight_time()
-        wifi_signal_noise_ratio = tello.query_wifi_signal_noise_ratio()
-
-        specs = {
-            "battery": battery,
-            "height": height,
-            "temperature": temperature,
-            "barometer": barometer,
-            "speed": {"x": speed_x, "y": speed_y, "z": speed_z},
-            "acceleration": {"x": ax, "y": ay, "z": az},
-            "roll": roll,
-            "pitch": pitch,
-            "yaw": yaw,
-            "flight_time": flight_time,
-            "wifi_signal_noise_ratio": wifi_signal_noise_ratio,
-        }
-
-        return specs
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Absolute path to the directory containing your static files
