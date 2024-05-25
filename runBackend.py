@@ -1,3 +1,4 @@
+import math
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,6 +15,9 @@ import asyncio
 app = FastAPI()
 
 faceRecognition = FacialRecognition("faces")
+
+velocity_x, velocity_y, velocity_z = 0.0, 0.0, 0.0
+previous_timestamp = None
 
 # Add CORS middleware
 app.add_middleware(
@@ -69,42 +73,46 @@ def get_video_stream():
 
     frame_read = tello.get_frame_read()
     while True:
-        frame = frame_read.frame
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        try:
+            frame = frame_read.frame
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        if faceProccessing == 1:
-            face_locations, face_names = faceRecognition.detect_face(frame_rgb)
-            for face_loc, name in zip(face_locations, face_names):
-                y1, x2, y2, x1 = face_loc[0], face_loc[1], face_loc[2], face_loc[3]
-                cv2.putText(
-                    frame_rgb,
-                    name,
-                    (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_DUPLEX,
-                    1,
-                    (0, 0, 200),
-                    2,
+            if faceProccessing == 1:
+                face_locations, face_names = faceRecognition.detect_face(frame_rgb)
+                for face_loc, name in zip(face_locations, face_names):
+                    y1, x2, y2, x1 = face_loc[0], face_loc[1], face_loc[2], face_loc[3]
+                    cv2.putText(
+                        frame_rgb,
+                        name,
+                        (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_DUPLEX,
+                        1,
+                        (0, 0, 200),
+                        2,
+                    )
+                    cv2.rectangle(frame_rgb, (x1, y1), (x2, y2), (0, 0, 200), 4)
+            elif faceProccessing == -1:
+                face_cascade = cv2.CascadeClassifier(
+                    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
                 )
-                cv2.rectangle(frame_rgb, (x1, y1), (x2, y2), (0, 0, 200), 4)
-        elif faceProccessing == -1:
-            face_cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-            )
 
-            # Convert the image to grayscale
-            gray_image = cv2.cvtColor(frame_rgb, cv2.COLOR_BGR2GRAY)
+                # Convert the image to grayscale
+                gray_image = cv2.cvtColor(frame_rgb, cv2.COLOR_BGR2GRAY)
 
-            # Look for faces in the image using the loaded cascade file
-            faces = face_cascade.detectMultiScale(gray_image, 1.1, 5)
+                # Look for faces in the image using the loaded cascade file
+                faces = face_cascade.detectMultiScale(gray_image, 1.1, 5)
 
-            # Draw a rectangle around the faces
-            for x, y, w, h in faces:
-                cv2.rectangle(frame_rgb, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                # Draw a rectangle around the faces
+                for x, y, w, h in faces:
+                    cv2.rectangle(frame_rgb, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        _, buffer = cv2.imencode(".jpg", frame_rgb)
-        frame = buffer.tobytes()
-        yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
-        time.sleep(1 / 30)
+            _, buffer = cv2.imencode(".jpg", frame_rgb)
+            frame = buffer.tobytes()
+            yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+            time.sleep(1 / 35)
+        except Exception as e:
+            print(f"Error in video stream: {e}")
+            time.sleep(1)
 
 
 @app.get("/video_feed")
@@ -143,7 +151,15 @@ def battery():
 def takeoff():
     if not tello_ready_event.is_set():
         raise HTTPException(status_code=500, detail="Tello not initialized")
-    run_in_thread(tello.takeoff)
+
+    def takeoff_with_logging():
+        try:
+            response = tello.takeoff()
+            print(f"Takeoff response: {response}")
+        except Exception as e:
+            print(f"Error during takeoff: {e}")
+
+    run_in_thread(takeoff_with_logging)
     return {"message": "Tello taking off..."}
 
 
@@ -151,7 +167,15 @@ def takeoff():
 def land():
     if not tello_ready_event.is_set():
         raise HTTPException(status_code=500, detail="Tello not initialized")
-    run_in_thread(tello.land)
+
+    def land_with_logging():
+        try:
+            response = tello.land()
+            print(f"Land response: {response}")
+        except Exception as e:
+            print(f"Error during landing: {e}")
+
+    run_in_thread(land_with_logging)
     return {"message": "Tello landing..."}
 
 
@@ -179,23 +203,11 @@ async def handle_movement(data: dict):
     # Access and update the global velocity state
     global velocity_state
 
-    # Map directions to velocities
-    if data.get("up_down_velocity") >= 1:
-        velocity_state["up_down_velocity"] += speed
-    elif data.get("up_down_velocity") <= -1:
-        velocity_state["up_down_velocity"] -= speed
-    elif data.get("left_right_velocity") <= -1:
-        velocity_state["left_right_velocity"] -= speed
-    elif data.get("left_right_velocity") >= 1:
-        velocity_state["left_right_velocity"] += speed
-    elif data.get("forward_backward_velocity") >= 1:
-        velocity_state["forward_backward_velocity"] += speed
-    elif data.get("forward_backward_velocity") <= -1:
-        velocity_state["forward_backward_velocity"] -= speed
-    elif data.get("yaw_velocity") <= -1:
-        velocity_state["yaw_velocity"] -= speed
-    elif data.get("yaw_velocity") >= 1:
-        velocity_state["yaw_velocity"] += speed
+    # Update velocities based on input data
+    velocity_state["left_right_velocity"] = data.get("left_right_velocity", 0) * speed
+    velocity_state["forward_backward_velocity"] = data.get("forward_backward_velocity", 0) * speed
+    velocity_state["up_down_velocity"] = data.get("up_down_velocity", 0) * speed
+    velocity_state["yaw_velocity"] = data.get("yaw_velocity", 0) * speed
 
     # Send the rc control command with the updated velocities
     tello.send_rc_control(
@@ -205,6 +217,10 @@ async def handle_movement(data: dict):
         velocity_state["yaw_velocity"],
     )
 
+    # Stop the drone if all velocities are zero
+    if all(v == 0 for v in velocity_state.values()):
+        tello.send_rc_control(0, 0, 0, 0)
+
     # Broadcast updated state to all clients
     for client in clients:
         await client.send_text(json.dumps(velocity_state))
@@ -212,10 +228,28 @@ async def handle_movement(data: dict):
 
 @app.websocket("/ws/specs")
 async def specs_websocket(websocket: WebSocket):
+    global velocity_x, velocity_y, velocity_z, previous_timestamp
     await websocket.accept()
     try:
         while True:
             if tello_ready_event.is_set():
+                timestamp = time.time()
+                if previous_timestamp is not None:
+                    # transform three accelerations to one velocity
+                    dt = timestamp - previous_timestamp
+                    # accels
+                    ax = tello.get_acceleration_x()
+                    ay = tello.get_acceleration_y()
+                    az = tello.get_acceleration_z()
+                    # update velocity
+                    velocity_x += ax * dt
+                    velocity_y += ay * dt
+                    velocity_z += az * dt
+                
+                previous_timestamp = timestamp
+                #pythagorean theorem yipee
+                speed = math.sqrt(velocity_x**2 + velocity_y**2 + velocity_z**2)
+
                 battery = tello.get_battery()
                 height = -1 * tello.get_height()
                 temperature = tello.get_temperature()
@@ -226,9 +260,7 @@ async def specs_websocket(websocket: WebSocket):
                 roll = tello.get_roll()
                 pitch = tello.get_pitch()
                 yaw = tello.get_yaw()
-                ax = tello.get_acceleration_x()
-                ay = tello.get_acceleration_y()
-                az = tello.get_acceleration_z()
+                
                 flight_time = tello.get_flight_time()
 
                 specs = {
@@ -237,15 +269,15 @@ async def specs_websocket(websocket: WebSocket):
                     "temperature": temperature,
                     "barometer": barometer,
                     "speed": {"x": speed_x, "y": speed_y, "z": speed_z},
+                    "speed_magnitude": speed, # calculated speed, id trust it
                     "acceleration": {"x": ax, "y": ay, "z": az},
                     "roll": roll,
                     "pitch": pitch,
                     "yaw": yaw,
                     "flight_time": flight_time,
                 }
-
                 await websocket.send_text(json.dumps(specs))
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.05)
     except WebSocketDisconnect:
         pass
 
@@ -378,6 +410,12 @@ def emergency():
     run_in_thread(tello.emergency)
     return {"message": "Stopped all motors"}
 
+@app.get("/throwTakeoff")
+def emergency():
+    if not tello_ready_event.is_set():
+        raise HTTPException(status_code=500, detail="Tello not initialized")
+    run_in_thread(tello.initiate_throw_takeoff)
+    return {"message": "Throw within 5 seconds"}
 
 @app.get("/rotate")
 def rotate(degrees: int):

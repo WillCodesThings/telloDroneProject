@@ -9,7 +9,7 @@
     let flightTime = 0; // flight time in seconds
     let battery = 100; // battery percentage
     let emergency = false; // emergency status
-    let moveSpeed = 10; // speed in cm/s
+    let moveSpeed = 50; // speed in cm/s
     let PersonToDetect = ""; // person to detect
     let throwableLaunch = false; // throwable launch status
     let altitude = 0;
@@ -17,6 +17,7 @@
     let faceRecognitionActive = false;
     let faceDetectionActive = false;
     let launched = false; // launched status
+    let coolingOn = false;
     let flipDir = "f";
     let roll = 0;
     let pitch = 0;
@@ -62,7 +63,8 @@
             roll = specs.roll;
             pitch = specs.pitch;
             yaw = specs.yaw;
-            altitude = specs.height;
+            altitude = -1 * specs.height;
+            speed = specs.speed_magnitude;
         };
 
         specsSocket.onopen = function() {
@@ -148,6 +150,11 @@
         };
 
         moveSocket.send(JSON.stringify(velocities));
+
+        // Check if all directions are inactive to send stop command
+        if (Object.values(currentDirections).every(value => value === false)) {
+            sendRequest('http://localhost:8000/stop');
+        }
     }
 
     function handleKeydown(event) {
@@ -262,7 +269,7 @@
         <div class="bg-[#171219] col-span-3 row-span-3 rounded-2xl p-2 flex flex-row">
             <div class="w-[75%] h-full bg-[#171219] shadow-[#29202c] shadow-sm rounded-md overflow-hidden" id="Camera">
                 <!-- Placeholder for drone image -->
-                <img src="{cameraDirection.includes("front") ? "http://localhost:8000/video_feed" : "http://localhost:8000/video_feed_down"}" alt="Drone Live Feed" class="rounded-md">
+                <img src="{cameraDirection.includes('front') ? 'http://localhost:8000/video_feed' : 'http://localhost:8000/video_feed_down'}" alt="Drone Live Feed" class="rounded-md">
             </div>
             
             <select class="mx-auto mt-20 w-48 h-16 bg-[#29202c] rounded-md text-[#E6E1D3] font-medium text-xl p-2" name="cameras" id="Cameras" bind:value={cameraDirection}>
@@ -383,7 +390,7 @@
             <div class="">
                 <div class="font-medium py-2">Speed Control</div>
                 <div class="flex flex-col items-center justify-center space-y-2">
-                    <input type="range" min="10" max="50" class="bg-[#29202c] appearance-none w-full h-2 rounded-full outline-none slider-thumb:bg-green-500 slider-thumb:hover:bg-green-700" style="cursor:pointer;" bind:value={moveSpeed}>
+                    <input type="range" min="50" max="100" class="bg-[#29202c] appearance-none w-full h-2 rounded-full outline-none slider-thumb:bg-green-500 slider-thumb:hover:bg-green-700" style="cursor:pointer;" bind:value={moveSpeed}>
                     {moveSpeed} cm/s
                 </div>
             </div>
@@ -401,9 +408,9 @@
             <div class="flex flex-col text-center w-full h-full">
                 <div class="font-medium py-2">Face Detection</div>
                 <div class="flex flex-row justify-evenly">
-                    <button class="control-btn {faceRecognitionActive ? faceDetectionActive ? "bg-[#29202c]" : "bg-green-700" : "bg-[#29202c]"} flex flex-col justify-center items-center" on:click={faceRecognition}><CrosshairIcon/></button>
-                    <button class="control-btn {faceDetectionActive ? faceRecognitionActive ? "bg-[#29202c]" : "bg-green-700" : "bg-[#29202c]"} flex flex-col justify-center items-center" on:click={faceDetection}><EyeIcon/></button>
-                    <button class="control-btn {faceDetectionActive ? "bg-[#29202c]" : faceRecognitionActive ? "bg-green-700" : "bg-[#29202c]"} flex flex-col justify-center items-center" on:click={faceStop}><EyeOffIcon/></button>
+                    <button class="control-btn {faceRecognitionActive ? faceDetectionActive ? 'bg-[#29202c]' : 'bg-green-700' : 'bg-[#29202c]'} flex flex-col justify-center items-center" on:click={faceRecognition}><CrosshairIcon/></button>
+                    <button class="control-btn {faceDetectionActive ? faceRecognitionActive ? 'bg-[#29202c]' : 'bg-green-700' : 'bg-[#29202c]'} flex flex-col justify-center items-center" on:click={faceDetection}><EyeIcon/></button>
+                    <button class="control-btn {faceDetectionActive ? 'bg-[#29202c]' : faceRecognitionActive ? 'bg-green-700' : 'bg-[#29202c]'} flex flex-col justify-center items-center" on:click={faceStop}><EyeOffIcon/></button>
                 </div>
                 
                 <select bind:value={PersonToDetect} class="bg-[#29202c] rounded-md text-[#E6E1D3] font-medium mt-2">
@@ -461,16 +468,16 @@
     }
 
     .control-btn {
-    width: 50px;
-    height: 50px;
-    color: #E6E1D3;
-    border: none;
-    border-radius: 5px;
-    font-size: 20px;
-    font-weight: bold;
-    cursor: pointer;
-    outline: none;
-    transition: background-color 0.3s ease;
+        width: 50px;
+        height: 50px;
+        color: #E6E1D3;
+        border: none;
+        border-radius: 5px;
+        font-size: 20px;
+        font-weight: bold;
+        cursor: pointer;
+        outline: none;
+        transition: background-color 0.3s ease;
     }
 
     .control-btn:hover {
